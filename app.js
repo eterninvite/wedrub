@@ -215,6 +215,43 @@
 
   applyConfig();
 
+  (function initFullscreen() {
+    var isMobile =
+      (window.matchMedia && window.matchMedia("(pointer: coarse)").matches) ||
+      /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+    if (!isMobile) return;
+
+    var requested = false;
+    function enterFullscreen() {
+      if (requested) return;
+      if (document.fullscreenElement || document.webkitFullscreenElement) {
+        requested = true;
+        return;
+      }
+      var el = document.documentElement;
+      var fn = el.requestFullscreen || el.webkitRequestFullscreen;
+      if (!fn) return;
+      try {
+        var res = el.requestFullscreen
+          ? el.requestFullscreen({ navigationUI: "hide" })
+          : el.webkitRequestFullscreen();
+        if (res && res.then) {
+          res
+            .then(function () {
+              requested = true;
+            })
+            .catch(function () {});
+        } else {
+          requested = true;
+        }
+      } catch (e) {}
+    }
+
+    ["touchend", "click"].forEach(function (ev) {
+      document.addEventListener(ev, enterFullscreen, { capture: true, passive: true });
+    });
+  })();
+
   (function initMusic() {
     var musicCfg = CFG.music || {};
     var audio = $("bgMusic");
