@@ -48,9 +48,8 @@
 
     setText("introFor", CFG.intro.forText);
     setText("introMono", couple.initials);
-    setText("introBlow", CFG.intro.blowText);
+    setText("introBlow", CFG.intro.tapText || CFG.intro.blowText);
     setText("introOr", CFG.intro.orText);
-    setText("micT", CFG.intro.micText);
     setText("heroFor", CFG.intro.together);
     setText("heroBride", couple.bride);
     setText("heroGroom", couple.groom);
@@ -107,7 +106,7 @@
     var intro = $("intro");
     intro.setAttribute(
       "aria-label",
-      "Un perete de sclipici roșu. Suflă spre telefon sau atinge ecranul pentru a deschide invitația de la " + names
+      "Un perete de sclipici roșu. Atinge ecranul de 3 ori pentru a deschide invitația de la " + names
     );
 
     var list = $("progList");
@@ -335,15 +334,13 @@
     var film = $("film");
     var meter = $("meter");
     var cv = $("anim");
-    var micBtn = $("mic");
-    var micT = $("micT");
     var opened = false;
     var named = false;
-    var blow = 0;
+    var taps = 0;
+    var TAPS_NEEDED = 3;
     var vidReady = false;
     var mode = "";
     var autoOK = null;
-    var lastOpenAt = 0;
     var VID = CFG.intro.video;
     var DECODE_JSON = CFG.intro.decodeJson;
 
@@ -355,10 +352,7 @@
       film.load();
     } catch (e) {}
     film.addEventListener("canplaythrough", function () {
-      if (!vidReady) {
-        vidReady = true;
-        plan();
-      }
+      if (!vidReady) vidReady = true;
     });
     try {
       var wp = film.play();
@@ -373,14 +367,12 @@
               } catch (e) {}
             }
             vidReady = true;
-            plan();
           },
           function (e) {
             if (e && e.name === "NotAllowedError") {
               autoOK = false;
               prepDecode();
               vidReady = true;
-              plan();
             }
           }
         );
@@ -508,19 +500,15 @@
       }, 9000);
     }
 
-    function setBlow(v) {
-      blow = v;
-      meter.style.setProperty("--blow", v.toFixed(3));
+    function setProgress(v) {
+      if (meter) meter.style.setProperty("--blow", v.toFixed(3));
     }
 
     function open(byTap) {
       if (opened) return;
       opened = true;
-      lastOpenAt = Date.now();
-      clearTimeout(autoT);
       buzz([20, 30, 40]);
-      stopMic();
-      setBlow(0);
+      setProgress(1);
       intro.classList.add("is-go");
       intro.removeAttribute("role");
       intro.removeAttribute("tabindex");
@@ -584,206 +572,32 @@
       if (mode === "video") showNames();
     });
     film.addEventListener("error", function () {
-      if (!vidReady) {
-        vidReady = true;
-        plan();
-      }
+      if (!vidReady) vidReady = true;
       if (opened && mode === "video") playDecoded();
     });
 
-    function tapOpen(e) {
-      if (opened || (e.target.closest && e.target.closest(".mic"))) return;
-      if (e.type === "touchend" && Date.now() - lastOpenAt < 400) return;
-      if (e.cancelable) e.preventDefault();
+    function registerTap() {
+      if (opened) return;
+      taps += 1;
+      setProgress(taps / TAPS_NEEDED);
+      var left = TAPS_NEEDED - taps;
+      if (left > 0) {
+        buzz(15);
+        setText("introOr", left === 1 ? "încă o atingere" : "încă " + left + " atingeri");
+        return;
+      }
       open(true);
     }
-    intro.addEventListener("click", tapOpen);
-    intro.addEventListener("touchend", tapOpen, { passive: false });
+
+    intro.addEventListener("click", function () {
+      registerTap();
+    });
     intro.addEventListener("keydown", function (e) {
       if (!opened && (e.key === "Enter" || e.key === " ")) {
         e.preventDefault();
-        open(true);
+        registerTap();
       }
     });
-
-    var AC = window.AudioContext || window.webkitAudioContext;
-    var actx = null;
-    var an = null;
-    var stream = null;
-    var buf = null;
-    var micOn = false;
-    var micWait = false;
-    var needTap = false;
-    var calib = [];
-    var floor = 0.01;
-    var last = 0;
-    var autoT = 0;
-    var canMic = !!(AC && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) && !still;
-
-    function plan() {
-      if (opened || micWait || !vidReady) return;
-      clearTimeout(autoT);
-      autoT = setTimeout(function () {
-        open(false);
-      }, micOn ? 8000 : needTap ? 6000 : 3000);
-    }
-    function stopMic() {
-      micOn = false;
-      try {
-        stream &&
-          stream.getTracks().forEach(function (t) {
-            t.stop();
-          });
-      } catch (e) {}
-      try {
-        actx && actx.close();
-      } catch (e) {}
-      stream = null;
-      actx = null;
-    }
-    function noMic() {
-      micWait = false;
-      if (opened) return;
-      micBtn.hidden = true;
-      $("introBlow").textContent = "Atinge sclipiciul";
-      $("introOr").textContent = "și privește-l cum cade";
-      plan();
-    }
-    function begin() {
-      if (micOn || opened) return;
-      micOn = true;
-      micWait = false;
-      needTap = false;
-      intro.classList.add("is-mic");
-      $("introOr").textContent = "o suflare ușoară este de ajuns";
-      last = performance.now();
-      requestAnimationFrame(sense);
-      plan();
-    }
-    function startMic() {
-      if (!canMic) {
-        noMic();
-        return;
-      }
-      if (!actx) {
-        try {
-          actx = new AC();
-        } catch (e) {
-          noMic();
-          return;
-        }
-      }
-      if (actx.state !== "running") {
-        try {
-          actx.resume();
-        } catch (e) {}
-      }
-      var ready = function () {
-        if (!actx) return;
-        if (actx.state === "running") {
-          begin();
-          return;
-        }
-        actx.resume().then(function () {
-          if (actx && actx.state === "running") begin();
-        }, function () {});
-        setTimeout(function () {
-          if (!micOn && !opened) {
-            micWait = false;
-            needTap = true;
-            micBtn.hidden = false;
-            micT.textContent = "Apasă aici, apoi suflă";
-            plan();
-          }
-        }, 700);
-      };
-      if (stream) {
-        ready();
-        return;
-      }
-      micWait = true;
-      navigator.mediaDevices
-        .getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } })
-        .then(function (s) {
-          if (opened || !actx) {
-            s.getTracks().forEach(function (t) {
-              t.stop();
-            });
-            return;
-          }
-          stream = s;
-          var src = actx.createMediaStreamSource(s);
-          an = actx.createAnalyser();
-          an.fftSize = 1024;
-          an.smoothingTimeConstant = 0.3;
-          src.connect(an);
-          buf = new Uint8Array(an.fftSize);
-          ready();
-        })
-        .catch(function () {
-          noMic();
-        });
-    }
-    micBtn.hidden = true;
-    micBtn.addEventListener("click", function (e) {
-      e.stopPropagation();
-      clearTimeout(autoT);
-      startMic();
-    });
-    var fb = null;
-    var base = null;
-    var nb = 0;
-    function sense(now) {
-      if (!micOn || opened || !an) return;
-      var dt = Math.min(0.1, (now - last) / 1000);
-      last = now;
-      an.getByteTimeDomainData(buf);
-      var s = 0;
-      for (var i = 0; i < buf.length; i++) {
-        var v = (buf[i] - 128) / 128;
-        s += v * v;
-      }
-      var rms = Math.sqrt(s / buf.length);
-      if (!fb) {
-        fb = new Float32Array(an.frequencyBinCount);
-        base = new Float32Array(fb.length);
-      }
-      an.getFloatFrequencyData(fb);
-      var B = Math.min(fb.length, Math.round((4500 / (actx.sampleRate / 2)) * fb.length));
-      var sc = 0;
-      for (var k = 1; k < B; k++) {
-        var db = Math.max(-140, isFinite(fb[k]) ? fb[k] : -140);
-        if (nb < 12) base[k] = (base[k] * nb + db) / (nb + 1);
-        else sc += Math.max(0, db - base[k]);
-      }
-      if (nb < 12) {
-        nb++;
-        calib.push(rms);
-        floor = calib.slice().sort(function (a, b) {
-          return a - b;
-        })[calib.length >> 1];
-        requestAnimationFrame(sense);
-        return;
-      }
-      sc /= Math.max(1, B - 1);
-      var thr = Math.max(0.012, floor * 2.2);
-      var on = sc > 7 || rms > thr;
-      if (sc < 3)
-        for (k = 1; k < B; k++) {
-          var d2 = Math.max(-140, isFinite(fb[k]) ? fb[k] : -140);
-          base[k] = base[k] * 0.97 + d2 * 0.03;
-        }
-      setBlow(clamp(blow + (on ? dt / 0.15 : -dt * 0.8)));
-      if (blow >= 1) open(false);
-      else requestAnimationFrame(sense);
-    }
-    startMic();
-    setTimeout(function () {
-      if (!vidReady) {
-        vidReady = true;
-        plan();
-      }
-    }, 6000);
 
     var rv = [].slice.call(document.querySelectorAll(".rv"));
     if (still || !("IntersectionObserver" in window)) {

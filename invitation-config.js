@@ -37,9 +37,8 @@
     },
     intro: {
       forText: "O invitație se ascunde sub sclipici",
-      blowText: "Suflă peste sclipici",
-      orText: "sau atinge ecranul",
-      micText: "Apasă aici, apoi suflă",
+      tapText: "Atinge sclipiciul",
+      orText: "apasă de 3 ori pentru a deschide",
       together: "Împreună cu familiile lor",
       inviteLine: "vă invită să sărbătoriți nunta lor",
       video: "./assets/film-ruby2.mp4",
